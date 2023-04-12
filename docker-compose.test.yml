@@ -1,0 +1,10 @@
+version: "3.9"
+services:
+  bots_test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"

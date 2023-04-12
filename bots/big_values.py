@@ -9,35 +9,73 @@ from bots.telegram_bot import send_message
 BINANCE_API_KEY = os.environ.get("BINANCE_API_KEY")
 BINANCE_API_SECRET = os.environ.get("BINANCE_API_SECRET")
 
-
-def get_all_usdt_tickers(client):
-    tickers = client.get_all_tickers()
-
-    for ticker in tickers:
-        if ticker["symbol"].endswith("USDT"):
-            yield ticker
+MIN_ORDER_VALUE = 100000
+THRESHOLD_PERCENT = 0.5 / 100
+INTERVAL = Client.KLINE_INTERVAL_5MINUTE
 
 
-async def send_high_value_notification(ticker, average_volume, high_values):
-    position = high_values[0]
-    value = high_values[1]
-    price = high_values[2]
-
+async def send_high_value_notification(ticker, average_volume, high_value):
     await send_message(
         f"""
-        {position} {ticker["symbol"]}
-        Volume: {value} / {average_volume} = {value / average_volume}
-        Price: {price} usdt
+        {high_value['position']} {ticker["symbol"]}
+        Volume: {high_value['value']} / {average_volume} = {high_value['value'] / average_volume}
+        Price: {high_value['price']} usdt
         """
     )
 
 
+def get_all_usdt_tickers(client):
+    tickers = client.get_all_tickers()
+
+    usdt_tickers = []
+    for ticker in tickers:
+        if ticker["symbol"].endswith("USDT"):
+            usdt_tickers.append(ticker)
+
+    return usdt_tickers
+
+
+async def get_klines_average_volume(client, ticker):
+    end_time = int(time.time() * 1000)
+    start_time = end_time - (5 * 60 * 1000)
+
+    klines = client.futures_klines(
+        symbol=ticker["symbol"],
+        interval=INTERVAL,
+        startTime=start_time,
+        endTime=end_time,
+    )
+
+    total_volume = 0
+    for kline in klines:
+        total_volume += float(kline[7])
+
+    return total_volume / len(klines) if len(klines) > 0 else 0
+
+
+def get_order_book_high_values(order_book, current_price):
+    high_values = []
+    for bid in order_book["bids"]:
+        price, quantity = bid
+        value = float(price) * float(quantity)
+        if value >= MIN_ORDER_VALUE and float(price) < current_price * (
+            1 - THRESHOLD_PERCENT
+        ):
+            high_values.append({"position": "LONG", "value": value, "price": price})
+
+    for ask in order_book["asks"]:
+        price, quantity = ask
+        value = float(price) * float(quantity)
+        if value >= MIN_ORDER_VALUE and float(price) > current_price * (
+            1 + THRESHOLD_PERCENT
+        ):
+            high_values.append({"position": "SHORT", "value": value, "price": price})
+
+    return high_values
+
+
 async def get_binance_big_values():
     client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
-
-    min_order_value = 100000
-    threshold_percent = 0.5 / 100
-    interval = Client.KLINE_INTERVAL_5MINUTE
 
     await send_message('Starting "Big Values" bot...')
 
@@ -46,21 +84,7 @@ async def get_binance_big_values():
     while True:
         for ticker in usdt_tickers:
             try:
-                end_time = int(time.time() * 1000)
-                start_time = end_time - (5 * 60 * 1000)
-
-                klines = client.futures_klines(
-                    symbol=ticker["symbol"],
-                    interval=interval,
-                    startTime=start_time,
-                    endTime=end_time,
-                )
-
-                total_volume = 0
-                for kline in klines:
-                    total_volume += float(kline[7])
-
-                average_volume = total_volume / len(klines) if len(klines) > 0 else 0
+                average_volume = await get_klines_average_volume(client, ticker)
             except exceptions.BinanceAPIException:
                 continue
 
@@ -71,31 +95,11 @@ async def get_binance_big_values():
 
             current_price = float(ticker["price"])
 
-            for bid in order_book["bids"]:
-                price, quantity = bid
-                value = float(price) * float(quantity)
-                if value >= min_order_value and float(price) < current_price * (
-                    1 - threshold_percent
-                ):
-                    if value > average_volume * 4:
-                        await send_high_value_notification(
-                            ticker,
-                            average_volume,
-                            ("LONG ⬆️", f"Value: {value}", f"Price: {price}"),
-                        )
+            order_book_high_values = get_order_book_high_values(
+                order_book, current_price
+            )
+            for high_value in order_book_high_values:
+                await send_high_value_notification(ticker, average_volume, high_value)
+                time.sleep(0.3)
 
-            for ask in order_book["asks"]:
-                price, quantity = ask
-                value = float(price) * float(quantity)
-                if value >= min_order_value and float(price) > current_price * (
-                    1 + threshold_percent
-                ):
-                    if value > average_volume * 4:
-                        await send_high_value_notification(
-                            ticker,
-                            average_volume,
-                            ("SHORT ⬇️", f"Value: {value}", f"Price: {price}"),
-                        )
-
-            time.sleep(0.3)
         time.sleep(30)
