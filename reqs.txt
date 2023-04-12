@@ -1,5 +1,5 @@
 asyncio
-aiohttp
+flask
 python-binance
 python-telegram-bot
 requests

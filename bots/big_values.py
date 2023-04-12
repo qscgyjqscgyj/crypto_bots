@@ -19,15 +19,15 @@ def get_all_usdt_tickers(client):
 
 
 async def send_high_value_notification(ticker, average_volume, high_values):
-    print("HIGH VOLUME!!!!!!!!!!!", ticker["symbol"], average_volume, high_values)
-    print("---------------------")
+    position = high_values[0]
+    value = high_values[1]
+    price = high_values[2]
 
     await send_message(
         f"""
-        HIGH VOLUME!!!!!!!!!!!\n
-        Ticker: {ticker["symbol"]}\n
-        Average volume in the last 5 minutes: {average_volume}
-        Values: {high_values}
+        {position} {ticker["symbol"]}
+        Volume: {value} / {average_volume} = {value / average_volume}
+        Price: {price} usdt
         """
     )
 
@@ -41,57 +41,61 @@ async def get_binance_big_values():
 
     await send_message('Starting "Big Values" bot...')
 
-    for ticker in get_all_usdt_tickers(client):
-        try:
-            end_time = int(time.time() * 1000)
-            start_time = end_time - (5 * 60 * 1000)
+    usdt_tickers = get_all_usdt_tickers(client)
 
-            klines = client.futures_klines(
+    while True:
+        for ticker in usdt_tickers:
+            try:
+                end_time = int(time.time() * 1000)
+                start_time = end_time - (5 * 60 * 1000)
+
+                klines = client.futures_klines(
+                    symbol=ticker["symbol"],
+                    interval=interval,
+                    startTime=start_time,
+                    endTime=end_time,
+                )
+
+                total_volume = 0
+                for kline in klines:
+                    total_volume += float(kline[7])
+
+                average_volume = total_volume / len(klines) if len(klines) > 0 else 0
+            except exceptions.BinanceAPIException:
+                continue
+
+            order_book = client.get_order_book(
                 symbol=ticker["symbol"],
-                interval=interval,
-                startTime=start_time,
-                endTime=end_time,
+                limit=10,
             )
 
-            total_volume = 0
-            for kline in klines:
-                total_volume += float(kline[7])
+            current_price = float(ticker["price"])
 
-            average_volume = total_volume / len(klines) if len(klines) > 0 else 0
-        except exceptions.BinanceAPIException:
-            continue
+            for bid in order_book["bids"]:
+                price, quantity = bid
+                value = float(price) * float(quantity)
+                if value >= min_order_value and float(price) < current_price * (
+                    1 - threshold_percent
+                ):
+                    if value > average_volume * 4:
+                        await send_high_value_notification(
+                            ticker,
+                            average_volume,
+                            ("LONG ⬆️", f"Value: {value}", f"Price: {price}"),
+                        )
 
-        order_book = client.get_order_book(
-            symbol=ticker["symbol"],
-            limit=10,
-        )
+            for ask in order_book["asks"]:
+                price, quantity = ask
+                value = float(price) * float(quantity)
+                if value >= min_order_value and float(price) > current_price * (
+                    1 + threshold_percent
+                ):
+                    if value > average_volume * 4:
+                        await send_high_value_notification(
+                            ticker,
+                            average_volume,
+                            ("SHORT ⬇️", f"Value: {value}", f"Price: {price}"),
+                        )
 
-        current_price = float(ticker["price"])
-
-        for bid in order_book["bids"]:
-            price, quantity = bid
-            value = float(price) * float(quantity)
-            if value >= min_order_value and float(price) < current_price * (
-                1 - threshold_percent
-            ):
-                if value > average_volume * 4:
-                    await send_high_value_notification(
-                        ticker,
-                        average_volume,
-                        ("LONG ⬆️", f"Value: {value}", f"Price: {price}"),
-                    )
-
-        for ask in order_book["asks"]:
-            price, quantity = ask
-            value = float(price) * float(quantity)
-            if value >= min_order_value and float(price) > current_price * (
-                1 + threshold_percent
-            ):
-                if value > average_volume * 4:
-                    await send_high_value_notification(
-                        ticker,
-                        average_volume,
-                        ("SHORT ⬇️", f"Value: {value}", f"Price: {price}"),
-                    )
-
-        time.sleep(0.3)
+            time.sleep(0.3)
+        time.sleep(30)
