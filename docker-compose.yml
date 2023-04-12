@@ -1,0 +1,7 @@
+version: "3.9"
+services:
+  bots:
+    restart: always
+    build: .
+    env_file:
+      - .env
