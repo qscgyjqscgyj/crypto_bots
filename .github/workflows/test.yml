@@ -7,7 +7,7 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: Run tests
-        run: ./run_test.sh
+        run: ./run_tests.sh
       - name: Show logs
         if: ${{ failure() }}
         run: docker-compose -f ./docker-compose.test.yml logs
