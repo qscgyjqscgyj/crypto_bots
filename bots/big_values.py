@@ -99,7 +99,10 @@ async def get_binance_big_values():
                 order_book, current_price
             )
             for high_value in order_book_high_values:
-                await send_high_value_notification(ticker, average_volume, high_value)
-                time.sleep(0.3)
+                if high_value["value"] >= average_volume * 4:
+                    await send_high_value_notification(
+                        ticker, average_volume, high_value
+                    )
+                    time.sleep(0.3)
 
         time.sleep(30)
