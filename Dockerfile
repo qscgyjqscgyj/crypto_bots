@@ -7,4 +7,4 @@ WORKDIR /app
 
 COPY . .
 
-CMD python ./bots/big_values.py
+CMD python ./main.py

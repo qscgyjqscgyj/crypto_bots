@@ -1,5 +1,4 @@
 import telegram
-import asyncio
 import os
 
 

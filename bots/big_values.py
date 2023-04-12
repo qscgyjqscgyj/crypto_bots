@@ -1,10 +1,9 @@
 import time
-import asyncio
 import os
 
 from binance import Client, exceptions
 
-from telegram_bot import send_message
+from bots.telegram_bot import send_message
 
 
 BINANCE_API_KEY = os.environ.get("BINANCE_API_KEY")
@@ -96,7 +95,3 @@ async def get_binance_big_values():
                     )
 
         time.sleep(0.3)
-
-
-if __name__ == "__main__":
-    asyncio.run(get_binance_big_values())
