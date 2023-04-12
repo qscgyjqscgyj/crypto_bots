@@ -6,6 +6,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Copy env file
+        run: cp .env.tpl .env
       - name: Run tests
         run: ./run_tests.sh
       - name: Show logs
